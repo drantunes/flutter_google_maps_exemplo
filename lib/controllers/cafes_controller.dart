@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
@@ -27,6 +29,13 @@ class CafesController extends GetxController {
       ? '${(raio.value * 1000).toStringAsFixed(0)} m'
       : '${(raio.value).toStringAsFixed(1)} km';
 
+  Future<Uint8List> getBytesFromAsset(String path, int width) async {
+    ByteData data = await rootBundle.load(path);
+    ui.Codec codec = await ui.instantiateImageCodec(data.buffer.asUint8List(), targetWidth: width);
+    ui.FrameInfo fi = await codec.getNextFrame();
+    return (await fi.image.toByteData(format: ui.ImageByteFormat.png)).buffer.asUint8List();
+  }
+
   filtrarCafes() {
     final geo = Geoflutterfire();
     final db = DB.get();
@@ -40,9 +49,8 @@ class CafesController extends GetxController {
 
     String field = 'position';
 
-    Stream<List<DocumentSnapshot>> stream = geo
-        .collection(collectionRef: ref)
-        .within(center: center, radius: raio.value, field: field);
+    Stream<List<DocumentSnapshot>> stream =
+        geo.collection(collectionRef: ref).within(center: center, radius: raio.value, field: field);
 
     stream.listen((List<DocumentSnapshot> cafes) {
       markers.clear();
@@ -72,16 +80,14 @@ class CafesController extends GetxController {
 
   addMarker(cafe) async {
     GeoPoint point = cafe.get('position.geopoint');
+    final Uint8List icon = await getBytesFromAsset('assets/cafe.png', 64);
 
     markers.add(
       Marker(
         markerId: MarkerId(cafe.id),
         position: LatLng(point.latitude, point.longitude),
         infoWindow: InfoWindow(title: cafe.get('nome')),
-        icon: await BitmapDescriptor.fromAssetImage(
-          ImageConfiguration(),
-          'assets/cafe_40.png',
-        ),
+        icon: BitmapDescriptor.fromBytes(icon),
         onTap: () => showDetails(cafe.data()),
       ),
     );
@@ -142,8 +148,7 @@ class CafesController extends GetxController {
       final posicao = await _posicaoAtual();
       latitude.value = posicao.latitude;
       longitude.value = posicao.longitude;
-      _mapsController.animateCamera(
-          CameraUpdate.newLatLng(LatLng(latitude.value, longitude.value)));
+      _mapsController.animateCamera(CameraUpdate.newLatLng(LatLng(latitude.value, longitude.value)));
     } catch (e) {
       Get.snackbar(
         'Erro',
